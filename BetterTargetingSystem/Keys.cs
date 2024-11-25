@@ -61,7 +61,7 @@ public unsafe class Keybind
 
         MouseKey? mouseKey;
         if ((mouseKey = this.GetMouseKey()) != null)
-            return ((int)CSFramework.Instance()->GetUIModule()->GetUIInputData()->MouseButtonPressedFlags & (int)mouseKey) != 0;
+            return ((int)CSFramework.Instance()->CursorInputs.MouseButtonPressedFlags & (int)mouseKey) != 0;
         else
             return Plugin.KeyState[(int)this.Key];
     }
