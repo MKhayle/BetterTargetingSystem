@@ -365,10 +365,10 @@ public sealed unsafe class Plugin : IDalamudPlugin
         float deviceHeight = device->Height;
 
         var PotentialTargets = ObjectTable.Where(
-            o => (o.ObjectKind == ObjectKind.BattleNpc
-                || o.ObjectKind == ObjectKind.Pc)
-            && o != ObjectTable.LocalPlayer
-            && Utils.CanAttack(o)
+            o => (ObjectKind.BattleNpc.Equals(o.ObjectKind)
+                  || ObjectKind.Pc.Equals(o.ObjectKind))
+                 && o != ObjectTable.LocalPlayer
+                 && Utils.CanAttack(o)
         );
 
         var EnemyList = Utils.GetEnemyListObjectIds();
