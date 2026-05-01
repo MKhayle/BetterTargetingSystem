@@ -73,7 +73,7 @@ public unsafe class Utils
 
         var framework = CSFramework.Instance();
         if (framework == null || framework->BGCollisionModule == null)
-            return false;
+            return true;
 
         var sourcePos = FFXIVClientStructs.FFXIV.Common.Math.Vector3.Zero;
         if (useCamera)
@@ -81,7 +81,7 @@ public unsafe class Utils
             // Using the camera's position as origin for raycast
             var cameraManager = CameraManager.Instance();
             if (cameraManager == null || cameraManager->CurrentCamera == null)
-                return false;
+                return true;
 
             sourcePos = cameraManager->CurrentCamera->Object.Position;
         }
