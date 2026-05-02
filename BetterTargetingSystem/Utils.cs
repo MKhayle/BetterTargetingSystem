@@ -37,32 +37,34 @@ public unsafe class Utils
         return distance;
     }
 
+
+
     internal unsafe static float GetCameraRotation()
     {
-        // Gives the camera rotation in deg between -180 and 180
-        var cameraRotation = AreaMapNumberArray.Instance()->ConeRotation;
+        var cameraManager = CameraManager.Instance();
+        if (cameraManager == null || cameraManager->CurrentCamera == null)
+            return 0;
 
-        // Transform the [-180,180] rotation to rad with same 0 as a GameObject rotation
-        // There might be an easier way to do that, but geometry and I aren't friends
-        var sign = Math.Sign(cameraRotation) == -1 ? -1 : 1;
-        var rotation = (float)((Math.Abs(cameraRotation * (Math.PI / 180)) - Math.PI) * sign);
-
-        // DO NOT ASK WHY. +135
-        return rotation;
+        // Extract horizontal rotation from ViewMatrix
+        var matrix = cameraManager->CurrentCamera->ViewMatrix;
+        return (float)Math.Atan2(matrix.M31, matrix.M33);
     }
 
-    internal static bool IsInFrontOfCamera(DalamudGameObject obj, float maxAngle)
+    internal unsafe static bool IsInFrontOfCamera(DalamudGameObject obj, float maxAngle)
     {
-        // This is still relying on camera orientation but the cone is from the player's position
-        if (Plugin.ObjectTable.LocalPlayer == null)
+        var cameraManager = CameraManager.Instance();
+        if (cameraManager == null || cameraManager->CurrentCamera == null || Plugin.ObjectTable.LocalPlayer == null)
             return false;
 
-        var rotation = GetCameraRotation();
-        var faceVec = new Vector2((float)Math.Cos(rotation), (float)Math.Sin(rotation));
-
-        var dir = obj.Position - Plugin.ObjectTable.LocalPlayer.Position;
-        var dirVec = new Vector2(dir.Z, dir.X);
-        var angle = Math.Acos(Vector2.Dot(dirVec, faceVec) / dirVec.Length() / faceVec.Length());
+        var matrix = cameraManager->CurrentCamera->ViewMatrix;
+        var p = obj.Position;
+        
+        // Transform world position to camera-space position (Projection)
+        float camX = matrix.M11 * p.X + matrix.M21 * p.Y + matrix.M31 * p.Z + matrix.M41;
+        float camZ = matrix.M13 * p.X + matrix.M23 * p.Y + matrix.M33 * p.Z + matrix.M43;
+        
+        // Horizontal angle in camera-space: atan2(X, -Z)
+        var angle = Math.Abs(Math.Atan2(camX, -camZ));
         return angle <= Math.PI * maxAngle / 360;
     }
 
