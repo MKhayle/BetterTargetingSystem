@@ -12,8 +12,7 @@ using BetterTargetingSystem.Windows;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-
-
+using System.Runtime.CompilerServices;
 using Dalamud.Plugin.Services;
 
 using DalamudCharacter = Dalamud.Game.ClientState.Objects.Types.ICharacter;
@@ -96,7 +95,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
         HelpWindow.Dispose();
     }
 
-    public void Log(string message) => PluginLog.Debug(message);
+    public static void Log(string message) => PluginLog.Debug(message);
     private void DrawUI() => this.WindowSystem.Draw();
     private void DrawHelpUI() => HelpWindow.Toggle();
     private void DrawConfigUI() => ConfigWindow.Toggle();
@@ -131,6 +130,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
 
         if (Configuration.TabTargetKeybind.IsPressed())
         {
+            Log("Pressed keybind");
             try { KeyState[(int)Configuration.TabTargetKeybind.Key!] = false; } catch { }
             CycleTargets();
             return;
@@ -195,12 +195,18 @@ public sealed unsafe class Plugin : IDalamudPlugin
     private void TargetBestAOE()
     {
         if (ObjectTable.LocalPlayer == null)
+        {
+            Log("BestAoE: LocalPlayer is null");
             return;
+        }
 
         var (Targets, CloseTargets, EnemyListTargets, OnScreenTargets) = GetTargets();
 
         if (OnScreenTargets.Count == 0)
+        {
+            Log("BestAoE: OnScreenTargets is empty");
             return;
+        }
 
         var groupManager = GroupManager.Instance();
         if (groupManager != null)
@@ -208,12 +214,15 @@ public sealed unsafe class Plugin : IDalamudPlugin
             EnemyListTargets.AddRange(OnScreenTargets.Where(o =>
                 EnemyListTargets.Contains(o) == false
                 && ((o as DalamudCharacter)?.StatusFlags & StatusFlags.InCombat) != 0
-                && groupManager->MainGroup.GetPartyMemberByEntityId((uint)o.TargetObjectId) != null
+                //&& groupManager->MainGroup.GetPartyMemberByEntityId((uint)o.TargetObjectId) != null
             ));
         }
 
         if (EnemyListTargets.Count == 0)
+        {
+            Log("BestAoE: No targets in the EnemyList");
             return;
+        }
 
         var AOETargetsList = new List<AOETarget>();
         foreach (var enemy in EnemyListTargets)
@@ -225,6 +234,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
                 if (Utils.DistanceBetweenObjects(enemy, other) > 5) continue;
                 AOETarget.inRange += 1;
             }
+            Log("BestAoE: Found one target from the list");
             AOETargetsList.Add(AOETarget);
         }
 
@@ -232,7 +242,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
 
         if (_targets.Count == 0)
             return;
-
+        Log("BestAoE: More than 0 targets");
         var _target = _targets.OrderByDescending(o => o.inRange).ThenByDescending(o => (o.obj as DalamudCharacter)?.CurrentHp).First().obj;
 
         SetTarget(_target);
@@ -241,14 +251,20 @@ public sealed unsafe class Plugin : IDalamudPlugin
     private void CycleTargets()
     {
         if (ObjectTable.LocalPlayer == null)
+        {
+            Log("No LocalPlayer");
             return;
+        }
 
         var (Targets, CloseTargets, EnemyListTargets, OnScreenTargets) = GetTargets();
 
         // All objects in Targets and CloseTargets are in OnScreenTargets so it's not necessary to test them
         if (EnemyListTargets.Count == 0 && OnScreenTargets.Count == 0)
+        {
+            Log("No Targets");
             return;
-
+        }
+        
         var _currentTarget = TargetManager.Target;
         var _previousTarget = TargetManager.PreviousTarget;
         var _targetObjectId = _currentTarget?.EntityId ?? _previousTarget?.EntityId ?? 0;
@@ -275,6 +291,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
                 var index = this.CyclingTargets.FindIndex(o => o == _targetObjectId);
                 if (index == this.CyclingTargets.Count - 1) index = -1;
                 SetTarget(_potentialTargets.Find(o => o.EntityId == this.CyclingTargets[index + 1]));
+                Log("Set target found");
             }
             else
             {
@@ -283,11 +300,11 @@ public sealed unsafe class Plugin : IDalamudPlugin
                 var index = _potentialTargetsObjectIds.FindIndex(o => o == _targetObjectId);
                 if (index == _potentialTargetsObjectIds.Count - 1) index = -1;
                 SetTarget(_potentialTargets.Find(o => o.EntityId == _potentialTargetsObjectIds[index + 1]));
-
+                Log("Set target found");
                 this.LastConeTargets = TargetsObjectIds;
                 this.CyclingTargets = _potentialTargetsObjectIds;
             }
-
+            
             return;
         }
 
@@ -342,6 +359,8 @@ public sealed unsafe class Plugin : IDalamudPlugin
     }
 
     public record ObjectsList(List<DalamudGameObject> Targets, List<DalamudGameObject> CloseTargets, List<DalamudGameObject> TargetsEnemy, List<DalamudGameObject> OnScreenTargets);
+    
+    [MethodImpl(MethodImplOptions.NoOptimization | MethodImplOptions.NoInlining)]
     internal ObjectsList GetTargets()
     {
         /* Always return 4 lists.
@@ -365,33 +384,52 @@ public sealed unsafe class Plugin : IDalamudPlugin
         float deviceHeight = device->Height;
 
         var PotentialTargets = ObjectTable.Where(
-            o => ObjectKind.BattleNpc.Equals(o.ObjectKind)
-                 && o != ObjectTable.LocalPlayer
+            o => ((ObjectKind.BattleNpc.Equals(o.ObjectKind)
+                   || BattleNpcSubKind.Combatant.Equals(o.ObjectKind)))
                  && Utils.CanAttack(o)
-        );
+        ).ToList();
+        
+        Log($"{PotentialTargets.Count()} potential target(s) found.");
 
         var EnemyList = Utils.GetEnemyListObjectIds();
 
+        var targetIndex = 0;
         foreach (var obj in PotentialTargets)
         {
+            Log($"Processing target {++targetIndex}/{PotentialTargets.Count}: {obj.Name}");
             // In the enemy list addon, adding it to the Enemy list
             if (EnemyList.Contains(obj.EntityId))
                 TargetsEnemyList.Add(obj);
 
             var o = (GameObject*)obj.Address;
-            if (o == null) continue;
+            if (o == null)
+            {
+                Log("This object is null, skipping.");
+                continue;
+            }
 
-            if (o->GetIsTargetable() == false) continue;
+            if (o->GetIsTargetable() == false)
+            {
+                Log("Can't target this object, skipping.");
+                continue;
+            }
 
             // If the object is part of another party's treasure hunt/leve, we ignore it
             if ((o->EventId.ContentId == EventHandlerContent.TreasureHuntDirector || o->EventId.ContentId == EventHandlerContent.BattleLeveDirector)
                 && o->EventId.Id != Player->EventId.Id)
+            {
+                Log("Can't target this object because it belongs to another player, skipping.");
                 continue;
+            }
 
             var distance = Utils.DistanceBetweenObjects(ObjectTable.LocalPlayer!, obj);
 
             // This is a bit less than the max distance to target something the vanilla way
-            if (distance > 49) continue;
+            if (distance > 49)
+            {
+                Log($"Max distance exceeded for {obj} ({distance}), skipping.");
+                continue;
+            }
 
             /*
              * Check if object is visible on screen or not.
@@ -408,31 +446,51 @@ public sealed unsafe class Plugin : IDalamudPlugin
                 || screenPos.X > deviceWidth
                 || screenPos.Y < 0
                 || screenPos.Y > deviceHeight) continue;
-            if (GameGui.WorldToScreen(o->Position, out _) == false) continue;
+            if (GameGui.WorldToScreen(o->Position, out _) == false)
+            {
+                Log("Target can't be seen on the screen. Skipping.");
+                continue;
+            }
 
             // Check actual line of sight from camera to object (blocked by walls, etc)
-            if (Utils.IsInLineOfSight(o, true) == false) continue;
+            if (Utils.IsInLineOfSight(o, true) == false)
+            {
+                Log("Target is not in line of sight. Skipping.");
+                continue;
+            }
 
             // On screen and in light of sight of the camera, adding it to the On Screen list
             OnScreenTargetsList.Add(obj);
 
             // Close to the player, adding it to the Close targets list
-            if (Configuration.CloseTargetsCircleEnabled && distance < Configuration.CloseTargetsCircleRadius)
+            if (Configuration.CloseTargetsCircleEnabled && Utils.DistanceBetweenObjects(ObjectTable.LocalPlayer!, obj) < Configuration.CloseTargetsCircleRadius)
+            {
+                Log($"Target is in the close circle ({Utils.DistanceBetweenObjects(ObjectTable.LocalPlayer!, obj)} inside {Configuration.CloseTargetsCircleRadius}).");
                 CloseTargetsList.Add(obj);
+            }
 
             // Further than the bigger cone, don't care about targeting it
             if (Configuration.Cone3Enabled)
             {
-                if (distance > Configuration.Cone3Distance)
+                if (Utils.DistanceBetweenObjects(ObjectTable.LocalPlayer!, obj) > Configuration.Cone3Distance)
+                {
+                    Log("Target is not in cone 3.");
                     continue;
+                }
             }
             else if (Configuration.Cone2Enabled)
             {
-                if (distance > Configuration.Cone2Distance)
+                if (Utils.DistanceBetweenObjects(ObjectTable.LocalPlayer!, obj) > Configuration.Cone2Distance)
+                {
+                    Log("Target is not in cone 2.");
                     continue;
+                }
             }
-            else if (distance > Configuration.Cone1Distance)
+            else if (Utils.DistanceBetweenObjects(ObjectTable.LocalPlayer!, obj) > Configuration.Cone1Distance)
+            {
+                Log("Target is not in cone 1.");
                 continue;
+            }
 
             // Default cone angle for very close targets, getting wider the closer the target is
             var angle = Configuration.Cone1Angle;
@@ -440,21 +498,26 @@ public sealed unsafe class Plugin : IDalamudPlugin
             {
                 if (Configuration.Cone2Enabled)
                 {
-                    if (distance > Configuration.Cone2Distance)
+                    if (Utils.DistanceBetweenObjects(ObjectTable.LocalPlayer!, obj) > Configuration.Cone2Distance)
                         angle = Configuration.Cone3Angle;
-                    else if (distance > Configuration.Cone1Distance)
+                    else if (Utils.DistanceBetweenObjects(ObjectTable.LocalPlayer!, obj) > Configuration.Cone1Distance)
                         angle = Configuration.Cone2Angle;
                 }
-                else if (distance > Configuration.Cone1Distance)
+                else if (Utils.DistanceBetweenObjects(ObjectTable.LocalPlayer!, obj) > Configuration.Cone1Distance)
                     angle = Configuration.Cone3Angle;
             }
-            else if (Configuration.Cone2Enabled && distance > Configuration.Cone1Distance)
+            else if (Configuration.Cone2Enabled && Utils.DistanceBetweenObjects(ObjectTable.LocalPlayer!, obj) > Configuration.Cone1Distance)
                 angle = Configuration.Cone2Angle;
 
-            if (Utils.IsInFrontOfCamera(obj, angle) == false) continue;
+            if (Utils.IsInFrontOfCamera(obj, angle) == false)
+            {
+                Log("Target is not in front of camera. Skipping.");
+                continue;
+            }
 
             // In front of the player, adding it to the default list
             TargetsList.Add(obj);
+            Log($"{obj} can be targeted.");
         }
 
         return new ObjectsList(TargetsList, CloseTargetsList, TargetsEnemyList, OnScreenTargetsList);

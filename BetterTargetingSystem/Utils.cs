@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using Dalamud.Utility.Signatures;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.UI.Arrays;
+using Serilog;
 
 namespace BetterTargetingSystem;
 
@@ -34,6 +35,7 @@ public unsafe class Utils
         var distance = Vector3.Distance(sourcePos, targetPos);
         //distance -= source.HitboxRadius;
         distance -= targetHitboxRadius;
+        Plugin.Log($"Distance: {distance} / Source position: {sourcePos} / Target position: {targetPos}");
         return distance;
     }
 
@@ -68,12 +70,12 @@ public unsafe class Utils
 
     internal static bool IsInLineOfSight(GameObject* target, bool useCamera = false)
     {
-        if (target == null)
-            return false;
-
         var framework = CSFramework.Instance();
         if (framework == null || framework->BGCollisionModule == null)
+        {
+            Plugin.Log($"Framework is null. Returning false for {target->Name.ToString()}.");
             return false;
+        }
 
         var sourcePos = FFXIVClientStructs.FFXIV.Common.Math.Vector3.Zero;
         if (useCamera)
@@ -81,7 +83,10 @@ public unsafe class Utils
             // Using the camera's position as origin for raycast
             var cameraManager = CameraManager.Instance();
             if (cameraManager == null || cameraManager->CurrentCamera == null)
+            {
+                Plugin.Log($"Camera is null. Returning false for {target->Name.ToString()}.");
                 return false;
+            }
 
             sourcePos = cameraManager->CurrentCamera->Object.Position;
         }
@@ -91,7 +96,10 @@ public unsafe class Utils
             if (Plugin.ObjectTable.LocalPlayer == null) return false;
             var player = (GameObject*)Plugin.ObjectTable.LocalPlayer.Address;
             if (player == null)
+            {
+                Plugin.Log($"Player is null. Returning false for {target->Name.ToString()}.");
                 return false;
+            }
 
             sourcePos = player->Position;
             sourcePos.Y += 2;
@@ -111,7 +119,7 @@ public unsafe class Utils
         RaycastHit hit;
         var flags = stackalloc int[] { 0x4000, 0, 0x4000, 0 };
         var isLoSBlocked = framework->BGCollisionModule->RaycastMaterialFilter(&hit, &originVect, &directionVect, distance, 1, flags);
-
+        Plugin.Log($"LoS: {!isLoSBlocked}");
         return isLoSBlocked == false;
     }
 
