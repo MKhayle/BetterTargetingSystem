@@ -36,8 +36,8 @@ public sealed unsafe class Plugin : IDalamudPlugin
 
     [PluginService] public static IDalamudPluginInterface PluginInterface { get; private set; } = null!;
     [PluginService] public static ICommandManager CommandManager { get; private set; } = null!;
-    [PluginService] public static IFramework Framework { get; set; }
-    [PluginService] public static IPluginLog PluginLog { get; set; }
+    [PluginService] public static IFramework Framework { get; set; } = null!;
+    [PluginService] public static IPluginLog PluginLog { get; set; } = null!;
     public Configuration Configuration { get; init; }
 
     [PluginService] public static IClientState Client { get; set; } = null!;
